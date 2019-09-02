@@ -7,7 +7,7 @@ import java.util.function.Supplier;
 
 import static java.util.function.Function.identity;
 
-public abstract class MinimalFuture<T> extends CompletableFuture<T> {
+abstract class MinimalFuture<T> extends CompletableFuture<T> {
     @Override public T get() { throw new UnsupportedOperationException(); }
     @Override public T get(long timeout, TimeUnit unit) { throw new UnsupportedOperationException(); }
     @Override public T getNow(T valueIfAbsent) { throw new UnsupportedOperationException(); }

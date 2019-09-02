@@ -33,16 +33,19 @@ public abstract class Channel<T> extends DualChannel<T, T> implements ChannelRea
         this.allowSynchronousContinuations = allowSynchronousContinuations;
     }
 
+    /** {@inheritDoc} */
     @Override
     public final ChannelReader<T> reader() {
         return this;
     }
 
+    /** {@inheritDoc} */
     @Override
     public final ChannelWriter<T> writer() {
         return this;
     }
 
+    /** {@inheritDoc} */
     @Override
     public final CompletionStage<Void> completion() {
         return completion;
@@ -155,10 +158,21 @@ public abstract class Channel<T> extends DualChannel<T, T> implements ChannelRea
 
     //<editor-fold desc="Static members">
 
+    /**
+     * Creates a builder for a {@link Channel} with the specified maximum capacity.
+     *
+     * @param capacity The maximum number of items the channel may store.
+     * @return A builder for the channel.
+     */
     public static BoundedChannelBuilder createBounded(int capacity) {
         return new BoundedChannelBuilder(capacity);
     }
 
+    /**
+     * Creates a builder for an unbounded {@link Channel}.
+     *
+     * @return A builder for the channel.
+     */
     public static UnboundedChannelBuilder createUnbounded() {
         return new UnboundedChannelBuilder();
     }
@@ -171,26 +185,60 @@ public abstract class Channel<T> extends DualChannel<T, T> implements ChannelRea
         Executor readerExecutor = ForkJoinPool.commonPool();
         boolean allowSynchronousContinuations = false;
 
+        /**
+         * Optimizes the {@link Channel} for situations where there will only ever be
+         * at most one read operation at a time.
+         *
+         * @return This builder for the channel.
+         */
         public final T singleWriter() {
             singleWriter = true;
             return (T)this;
         }
 
+        /**
+         * Optimizes the {@link Channel} for situations where there will only ever be
+         * at most one write operation at a time.
+         *
+         * @return This builder for the channel.
+         */
         public final T singleReader() {
             singleReader = true;
             return (T)this;
         }
 
+        /**
+         * Sets the {@link Executor} to be used by the {@link Channel} to invoke continuations
+         * subscribed to notifications of pending write operations.
+         *
+         * @param writerExecutor The {@link Executor} to be used by the {@link Channel} to invoke
+         * continuations subscribed to notifications of pending write operations.
+         * @return This builder for the channel.
+         */
         public final T scheduleWriterContinuationsOn(Executor writerExecutor) {
             this.writerExecutor = writerExecutor;
             return (T)this;
         }
 
+        /**
+         * Sets the {@link Executor} to be used by the {@link Channel} to invoke continuations
+         * subscribed to notifications of pending read operations.
+         *
+         * @param readerExecutor The {@link Executor} to be used by the {@link Channel} to invoke
+         * continuations subscribed to notifications of pending read operations.
+         * @return This builder for the channel.
+         */
         public final T scheduleReaderContinuationsOn(Executor readerExecutor) {
             this.readerExecutor = readerExecutor;
             return (T)this;
         }
 
+        /**
+         * Allows the {@link Channel} to invoke continuations subscribed to notifications
+         * of pending async operations synchronously.
+         *
+         * @return This builder for the channel.
+         */
         public final T allowSynchronousContinuations() {
             this.allowSynchronousContinuations = true;
             return (T)this;
@@ -201,15 +249,27 @@ public abstract class Channel<T> extends DualChannel<T, T> implements ChannelRea
         private final int capacity;
         private BoundedChannelFullMode fullMode = BoundedChannelFullMode.WAIT;
 
-        public BoundedChannelBuilder(int capacity) {
+        BoundedChannelBuilder(int capacity) {
             this.capacity = capacity;
         }
 
+        /**
+         * Sets the behavior incurred by write operations when the channel is full.
+         *
+         * @param fullMode The behavior incurred by write operations when the channel is full.
+         * @return This builder for the channel.
+         */
         public final BoundedChannelBuilder fullMode(BoundedChannelFullMode fullMode) {
             this.fullMode = fullMode;
             return this;
         }
 
+        /**
+         * Returns the configured {@link Channel}.
+         *
+         * @param <T> Specifies the type of data in the channel.
+         * @return The configured {@link Channel}.
+         */
         public final <T> Channel<T> build() {
             if (allowSynchronousContinuations) {
                 return new BoundedChannel<>(capacity, fullMode);
@@ -220,6 +280,12 @@ public abstract class Channel<T> extends DualChannel<T, T> implements ChannelRea
     }
 
     public final static class UnboundedChannelBuilder extends ChannelBuilder<UnboundedChannelBuilder> {
+        /**
+         * Returns the configured {@link Channel}.
+         *
+         * @param <T> Specifies the type of data in the channel.
+         * @return The configured {@link Channel}.
+         */
         public final <T> Channel<T> build() {
             if (allowSynchronousContinuations) {
                 return new UnboundedChannel<>();
