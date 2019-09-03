@@ -2,7 +2,6 @@ package com.ndportmann.channels;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
@@ -13,6 +12,7 @@ import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
+import static com.ndportmann.channels.TestHelper.*;
 import static java.util.stream.Collectors.toList;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -286,7 +286,7 @@ abstract class ChannelTestBase {
 
         assertTrue(
                 Arrays.stream(writers)
-                .peek(ChannelTestBase::runOk)
+                .peek(TestHelper::runOk)
                 .allMatch(CompletableFuture::isDone)
         );
     }
@@ -319,7 +319,7 @@ abstract class ChannelTestBase {
 
         int res = Arrays.stream(readers)
                 .map(cs -> (CompletionStage<Integer>)cs)
-                .mapToInt(ChannelTestBase::runOk)
+                .mapToInt(TestHelper::runOk)
                 .sum();
         assertEquals((items * (items - 1)) / 2, res);
     }
@@ -414,24 +414,4 @@ abstract class ChannelTestBase {
         assertThrows(UnsupportedOperationException.class, () -> cf.completeOnTimeout(null, 1, TimeUnit.MILLISECONDS));
     }
 
-    static <T> T runOk(CompletionStage<T> asyncAction) {
-        try {
-            return asyncAction.toCompletableFuture().get();
-        } catch (InterruptedException | ExecutionException ex) {
-            fail(ex);
-            return null;
-        }
-    }
-
-    private static <T> T run(Supplier<CompletionStage<T>> asyncAction) throws ExecutionException, InterruptedException {
-        return asyncAction.get().toCompletableFuture().get();
-    }
-
-    private static <T> Executable exec(Supplier<CompletionStage<T>> asyncAction) {
-        return () -> run(asyncAction);
-    }
-
-    private static <T extends Throwable> void assertThrowsCause(Class<T> expectedCauseType, Executable executable) {
-        assertTrue(expectedCauseType.isInstance(assertThrows(ExecutionException.class, executable).getCause()));
-    }
 }

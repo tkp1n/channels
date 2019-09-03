@@ -1,5 +1,7 @@
 package com.ndportmann.channels;
 
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
 import java.util.Deque;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -8,8 +10,19 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ForkJoinPool;
 
 public abstract class Channel<T> extends DualChannel<T, T> implements ChannelReader<T>, ChannelWriter<T> {
+    private static final VarHandle DONE_WRITING;
     static final Throwable SUCCESSFUL_COMPLETION_SENTINEL = new ChannelClosedException();
     static final CompletableFuture<Void> COMPLETED_VOID_FUTURE = CompletableFuture.completedFuture(null);
+
+    static {
+        try {
+            DONE_WRITING = MethodHandles
+                    .privateLookupIn(Channel.class, MethodHandles.lookup())
+                    .findVarHandle(Channel.class, "doneWriting", Throwable.class);
+        } catch (NoSuchFieldException | IllegalAccessException e) {
+            throw new IllegalStateException(e);
+        }
+    }
 
     private final Executor readerExecutor;
     private final Executor writerExecutor;
@@ -64,10 +77,20 @@ public abstract class Channel<T> extends DualChannel<T, T> implements ChannelRea
         return doneWriting != null;
     }
 
+    final boolean volatileDoneWriting() {
+        return ((Throwable)DONE_WRITING.getVolatile(this)) != null;
+    }
+
     final boolean isChannelCompleted() {
         assert Thread.holdsLock(lock());
 
         return doneWriting() && queue.isEmpty();
+    }
+
+    final boolean volatileIsChannelCompleted() {
+        assert !Thread.holdsLock(lock());
+
+        return volatileDoneWriting() && queue.isEmpty();
     }
 
     final void completeCompletion() {
@@ -246,8 +269,8 @@ public abstract class Channel<T> extends DualChannel<T, T> implements ChannelRea
     }
 
     public final static class BoundedChannelBuilder extends ChannelBuilder<BoundedChannelBuilder> {
-        private final int capacity;
-        private BoundedChannelFullMode fullMode = BoundedChannelFullMode.WAIT;
+        final int capacity;
+        BoundedChannelFullMode fullMode = BoundedChannelFullMode.WAIT;
 
         BoundedChannelBuilder(int capacity) {
             this.capacity = capacity;
