@@ -7,7 +7,7 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.Executor;
 
 final class UnboundedChannel<T> extends Channel<T> implements ChannelReader<T>, ChannelWriter<T>  {
-    private final BlockedReaderDeque<T> blockedReaders = new BlockedReaderDeque<T>();
+    private final BlockedReaderDeque<T> blockedReaders = new BlockedReaderDeque<>();
 
     UnboundedChannel() {
         this(null, null, true);

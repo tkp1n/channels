@@ -67,12 +67,12 @@ final class StressTests {
                     true, allowSynchronousContinuations, singleReader, singleWriter, capacity, fullMode,
                     () -> {
                         var builder = Channel.createBounded(capacity);
-                        builder.allowSynchronousContinuations = allowSynchronousContinuations;
-                        builder.singleReader = singleReader;
-                        builder.readerExecutor = readerExecutor;
-                        builder.singleWriter = singleWriter;
-                        builder.writerExecutor = writerExecutor;
-                        builder.fullMode = fullMode;
+                        if (allowSynchronousContinuations) builder = builder.allowSynchronousContinuations();
+                        if (singleReader) builder = builder.singleReader();
+                        builder = builder.scheduleReaderContinuationsOn(readerExecutor);
+                        if (singleWriter) builder = builder.singleWriter();
+                        builder = builder.scheduleWriterContinuationsOn(writerExecutor);
+                        builder = builder.fullMode(fullMode);
                         return builder.build();
                     }
             ));
@@ -88,11 +88,11 @@ final class StressTests {
                     false, allowSynchronousContinuations, singleReader, singleWriter, Integer.MAX_VALUE, null,
                     () -> {
                         var builder = Channel.createUnbounded();
-                        builder.allowSynchronousContinuations = allowSynchronousContinuations;
-                        builder.singleReader = singleReader;
-                        builder.readerExecutor = readerExecutor;
-                        builder.singleWriter = singleWriter;
-                        builder.writerExecutor = writerExecutor;
+                        if (allowSynchronousContinuations) builder = builder.allowSynchronousContinuations();
+                        if (singleReader) builder = builder.singleReader();
+                        builder = builder.scheduleReaderContinuationsOn(readerExecutor);
+                        if (singleWriter) builder = builder.singleWriter();
+                        builder = builder.scheduleWriterContinuationsOn(writerExecutor);
                         return builder.build();
                     }
             ));

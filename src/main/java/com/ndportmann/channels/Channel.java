@@ -68,7 +68,7 @@ public abstract class Channel<T> extends DualChannel<T, T> implements ChannelRea
         return queue;
     }
 
-    final boolean isWritable() {
+    private boolean isWritable() {
         // Not having a Throwable stored in doneWriting is used to indicate whether the channel is writable.
         return doneWriting == null;
     }
@@ -77,7 +77,7 @@ public abstract class Channel<T> extends DualChannel<T, T> implements ChannelRea
         return doneWriting != null;
     }
 
-    final boolean volatileDoneWriting() {
+    private boolean volatileDoneWriting() {
         return ((Throwable)DONE_WRITING.getVolatile(this)) != null;
     }
 
@@ -178,8 +178,6 @@ public abstract class Channel<T> extends DualChannel<T, T> implements ChannelRea
             assert success;
         }
     }
-
-    //<editor-fold desc="Static members">
 
     /**
      * Creates a builder for a {@link Channel} with the specified maximum capacity.
@@ -317,5 +315,4 @@ public abstract class Channel<T> extends DualChannel<T, T> implements ChannelRea
             }
         }
     }
-    //</editor-fold>
 }

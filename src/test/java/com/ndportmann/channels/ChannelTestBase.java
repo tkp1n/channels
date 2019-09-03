@@ -156,7 +156,6 @@ abstract class ChannelTestBase {
     })
     @SuppressWarnings("unsafe")
     void manyProducerConsumerConcurrentReadWriteSuccess(int numReaders, int numWriters, Channel<Integer> channel) throws Exception {
-        // TODO: unstable
         if (requiresSingleReader && numReaders > 1) {
             return;
         }
@@ -259,7 +258,7 @@ abstract class ChannelTestBase {
     @Test
     @SuppressWarnings("unchecked")
     void manyWriteThenManyTryReadSuccess(Channel<Integer> channel) {
-        if (requiresSingleReader || requiresSingleWriter) { // TODO
+        if (requiresSingleReader || requiresSingleWriter) {
             return;
         }
 

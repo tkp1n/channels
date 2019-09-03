@@ -1,6 +1,7 @@
 package com.ndportmann.channels;
 
-import java.util.*;
+import java.util.ArrayDeque;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
@@ -8,7 +9,7 @@ import java.util.concurrent.Executor;
 final class BoundedChannel<T> extends Channel<T> implements ChannelReader<T>, ChannelWriter<T> {
     private final int capacity;
     private final BoundedChannelFullMode fullMode;
-    private final BlockedReaderDeque<T> blockedReaders = new BlockedReaderDeque<T>();
+    private final BlockedReaderDeque<T> blockedReaders = new BlockedReaderDeque<>();
     private final BlockedWriterDeque blockedWriters = new BlockedWriterDeque();
 
     BoundedChannel(final int capacity, final BoundedChannelFullMode fullMode) {
