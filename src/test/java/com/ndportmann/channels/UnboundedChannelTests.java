@@ -6,6 +6,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.function.Supplier;
 
+import static com.ndportmann.channels.TestHelper.runOk;
 import static org.junit.jupiter.api.Assertions.*;
 
 abstract class UnboundedChannelTests extends ChannelTestBase {

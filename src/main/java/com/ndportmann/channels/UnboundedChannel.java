@@ -1,9 +1,9 @@
 package com.ndportmann.channels;
 
-import java.util.ArrayDeque;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.Executor;
 
 final class UnboundedChannel<T> extends Channel<T> implements ChannelReader<T>, ChannelWriter<T>  {
@@ -18,27 +18,16 @@ final class UnboundedChannel<T> extends Channel<T> implements ChannelReader<T>, 
     }
 
     private UnboundedChannel(Executor readerExecutor, Executor writerExecutor, boolean allowSynchronousContinuations) {
-        super(new ArrayDeque<>(), readerExecutor, writerExecutor, allowSynchronousContinuations);
+        super(new ConcurrentLinkedDeque<>(), readerExecutor, writerExecutor, allowSynchronousContinuations);
     }
 
     /* ---- ChannelReader ---- */
 
     @Override
     public T poll() {
-        final T item;
-        final boolean complete;
+        final T item = queue.poll();
 
-        synchronized (lock()) {
-            item = queue.poll();
-
-            if (item != null) {
-                complete = isChannelCompleted();
-            } else {
-                return null;
-            }
-        }
-
-        if (complete) {
+        if (item != null && volatileIsChannelCompleted()) {
             completeCompletion();
         }
 
@@ -50,12 +39,20 @@ final class UnboundedChannel<T> extends Channel<T> implements ChannelReader<T>, 
         final boolean complete;
         final CompletableFuture<T> future;
 
+        final T item = queue.poll();
+        if (item != null) {
+            if (volatileIsChannelCompleted()) {
+                completeCompletion();
+            }
+            return CompletableFuture.completedFuture(item);
+        }
+
         synchronized (lock()) {
-            final T item = queue.poll();
-            if (item != null) {
+            final T lItem = queue.poll();
+            if (lItem != null) {
                 complete = isChannelCompleted();
                 // complete synchronously
-                future = CompletableFuture.completedFuture(item);
+                future = CompletableFuture.completedFuture(lItem);
             } else {
                 if (doneWriting()) {
                     return channelClosed;
@@ -105,8 +102,7 @@ final class UnboundedChannel<T> extends Channel<T> implements ChannelReader<T>, 
                 return channelClosedFuture();
             }
 
-            final int size = queue.size();
-            if (size == 0) {
+            if (queue.isEmpty()) {
                 // No item in queue -> we may have a blocked reader
                 if (blockedReaders.readOne(item)) {
                     return COMPLETED_VOID_FUTURE;
