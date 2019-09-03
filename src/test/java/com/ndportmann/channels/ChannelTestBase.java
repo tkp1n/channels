@@ -175,15 +175,11 @@ abstract class ChannelTestBase {
 
         for (int i = 0; i < numReaders; i++) {
             futures[i] = CompletableFuture.runAsync(() -> {
-                try {
+                assertThrowsCause(ChannelClosedException.class, () -> {
                     while (true) {
                         readTotal.add(run(channel::read));
                     }
-                } catch (InterruptedException | ExecutionException e) {
-                    if(!(e.getCause() instanceof ChannelClosedException)) {
-                        fail(e);
-                    }
-                }
+                });
             });
         }
         for (int i = 0; i < numWriters; i++) {
@@ -193,11 +189,8 @@ abstract class ChannelTestBase {
                     if (value < 0) {
                         break;
                     }
-                    try {
-                        run(() -> channel.write(value + 1));
-                    } catch (InterruptedException | ExecutionException e) {
-                        fail(e);
-                    }
+
+                    runOk(channel.write(value + 1));
                 }
                 if (remainingWriters.decrementAndGet() == 0) {
                     channel.complete();
