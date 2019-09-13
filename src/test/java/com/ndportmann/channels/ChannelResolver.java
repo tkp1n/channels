@@ -18,6 +18,21 @@ final class ChannelResolver implements ParameterResolver {
 
     @Override
     public Object resolveParameter(ParameterContext parameterContext, ExtensionContext extensionContext) throws ParameterResolutionException {
+        Object result = resolveSuper(extensionContext);
+        if (result != null) {
+            return result;
+        }
+
+        result = resolveEnclosing(extensionContext);
+        if (result != null) {
+            return result;
+        }
+
+        fail("This should never happen -- an implementation of createIntChannel() was not found");
+        return null;
+    }
+
+    Object resolveSuper(ExtensionContext extensionContext) {
         Object testInstance = extensionContext.getTestInstance().get();
         try {
             Class<?> clazz = testInstance.getClass();
@@ -33,7 +48,31 @@ final class ChannelResolver implements ParameterResolver {
             } while (clazz != null);
         } catch (IllegalAccessException | InvocationTargetException ignored) {
         }
-        fail("This should never happen -- an implementation of createIntChannel() was not found");
+        return null;
+    }
+
+    Object resolveEnclosing(ExtensionContext extensionContext) {
+        Object o = extensionContext.getTestInstance().get();
+        try {
+            Class<?> clazz = o.getClass();
+            Object target = o;
+            do {
+                try {
+                    Method registry = clazz.getDeclaredMethod("createIntChannel");
+                    registry.setAccessible(true);
+                    return registry.invoke(target);
+                } catch (NoSuchMethodException ignored) {
+                }
+
+                try {
+                    target = o.getClass().getDeclaredField("this$0").get(target);
+                } catch (NoSuchFieldException e) {
+                    break;
+                }
+            } while ((clazz = clazz.getEnclosingClass()) != null);
+        } catch (IllegalAccessException | InvocationTargetException e) {
+            e.printStackTrace();
+        }
         return null;
     }
 }

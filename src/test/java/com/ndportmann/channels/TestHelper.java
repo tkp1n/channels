@@ -31,4 +31,8 @@ final class TestHelper {
     static <T extends Throwable> void assertThrowsCause(Class<T> expectedCauseType, Executable executable) {
         assertTrue(expectedCauseType.isInstance(assertThrows(ExecutionException.class, executable).getCause()));
     }
+
+    static <T extends Throwable> void assertThrowsCause(T expectedCause, Executable executable) {
+        assertEquals(expectedCause, (assertThrows(ExecutionException.class, executable).getCause()));
+    }
 }

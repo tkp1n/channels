@@ -1,16 +1,18 @@
 package com.ndportmann.channels;
 
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
-import java.util.Arrays;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import static com.ndportmann.channels.TestHelper.*;
 import static java.util.stream.Collectors.toList;
@@ -388,7 +390,580 @@ abstract class ChannelTestBase {
         assertCompletableFutureDoesNotLeak(cs);
     }
 
-    static <T> void assertCompletableFutureDoesNotLeak(CompletionStage<T> cs) {
+    @Nested
+    class ChannelReaderTests {
+        @Test
+        void pollConsumerEmpty(Channel<Integer> channel) {
+            var sum = new AtomicInteger();
+            var count = channel.poll(sum::addAndGet);
+
+            assertEquals(0, sum.get());
+            assertEquals(0, count);
+        }
+
+        @Test
+        void pollConsumerManyItems(Channel<Integer> channel) throws Exception {
+            int numItems = 100;
+            CompletableFuture[] cfs = new CompletableFuture[numItems];
+            for (int i = 0; i < cfs.length; i++) {
+                cfs[i] = channel.write(i).toCompletableFuture();
+            }
+
+            var sum = new AtomicInteger();
+            var count = channel.poll(sum::addAndGet);
+
+            CompletableFuture.allOf(cfs).get();
+
+            assertEquals((numItems - 1) * numItems / 2., sum.get());
+            assertEquals(numItems, count);
+        }
+
+        @Test
+        void manyPollConsumerManyItems(Channel<Integer> channel) throws Exception {
+            int numItems = 10_000;
+            CompletableFuture[] writes = new CompletableFuture[numItems];
+            for (int i = 0; i < writes.length; i++) {
+                writes[i] = channel.write(i).toCompletableFuture();
+            }
+
+            var sum = new AtomicInteger();
+            var count = new AtomicInteger();
+            CompletableFuture.allOf(
+                CompletableFuture.runAsync(() -> count.addAndGet(channel.poll(sum::addAndGet))),
+                CompletableFuture.runAsync(() -> count.addAndGet(channel.poll(sum::addAndGet))),
+                CompletableFuture.runAsync(() -> count.addAndGet(channel.poll(sum::addAndGet)))
+            ).get();
+
+            CompletableFuture.allOf(writes).get();
+
+            assertEquals((numItems - 1) * numItems / 2., sum.get());
+            assertEquals(numItems, count.get());
+        }
+
+        @Test
+        void pollConsumerAfterCompleteReturnsZero(Channel<Integer> channel) {
+            channel.complete();
+
+            var sum = new AtomicInteger();
+            assertEquals(0, channel.poll(sum::addAndGet));
+            assertEquals(0, sum.get());
+        }
+
+        @Test
+        void pollAllArrayEmpty(Channel<Integer> channel) {
+            var items = new Integer[10];
+            var count = channel.pollAll(items);
+
+            assertEquals(0, count);
+            for (int i = 0; i < items.length; i++) {
+                assertNull(items[i]);
+            }
+        }
+
+        @Test
+        void pollAllArrayManyItems(Channel<Integer> channel) throws Exception {
+            int numItems = 100;
+            CompletableFuture[] cfs = new CompletableFuture[numItems];
+            for (int i = 0; i < cfs.length; i++) {
+                cfs[i] = channel.write(i).toCompletableFuture();
+            }
+
+            var items = new Integer[numItems];
+            var count = channel.pollAll(items);
+
+            CompletableFuture.allOf(cfs).get();
+
+            for (int i = 0; i < numItems; i++) {
+                assertEquals(i, items[i]);
+            }
+            assertEquals(numItems, count);
+        }
+
+        @Test
+        void pollAllArrayManyItemsArrayTooSmall(Channel<Integer> channel) throws Exception {
+            int numItems = 100;
+            CompletableFuture[] cfs = new CompletableFuture[numItems];
+            for (int i = 0; i < cfs.length; i++) {
+                cfs[i] = channel.write(i).toCompletableFuture();
+            }
+
+            var items = new Integer[numItems - 10];
+            var count = channel.pollAll(items);
+
+            CompletableFuture.allOf(Arrays.copyOf(cfs, count)).get();
+
+            for (int i = 0; i < numItems - 10; i++) {
+                assertEquals(i, items[i]);
+            }
+            assertEquals(numItems - 10, count);
+        }
+
+        @Test
+        void manyPollAllArrayManyItems(Channel<Integer> channel) throws Exception {
+            int numItems = 10_000;
+            CompletableFuture[] writes = new CompletableFuture[numItems];
+            for (int i = 0; i < writes.length; i++) {
+                writes[i] = channel.write(i).toCompletableFuture();
+            }
+
+            var arr1 = new Integer[numItems];
+            var arr2 = new Integer[numItems];
+            var arr3 = new Integer[numItems];
+            var count = new AtomicInteger();
+            CompletableFuture.allOf(
+                    CompletableFuture.runAsync(() -> count.addAndGet(channel.pollAll(arr1))),
+                    CompletableFuture.runAsync(() -> count.addAndGet(channel.pollAll(arr2))),
+                    CompletableFuture.runAsync(() -> count.addAndGet(channel.pollAll(arr3)))
+            ).get();
+
+            CompletableFuture.allOf(writes).get();
+
+            assertTrue(isSorted(arr1));
+            assertTrue(isSorted(arr2));
+            assertTrue(isSorted(arr3));
+
+            var all = Stream.of(
+                    Arrays.stream(arr1).filter(Objects::nonNull),
+                    Arrays.stream(arr2).filter(Objects::nonNull),
+                    Arrays.stream(arr3).filter(Objects::nonNull)
+            ).reduce(Stream::concat).orElseGet(Stream::empty)
+            .mapToInt(i -> i)
+            .toArray();
+
+            Arrays.sort(all);
+
+            assertEquals(numItems, all.length);
+            for (int i = 0; i < all.length; i++) {
+                assertEquals(i, all[i]);
+            }
+
+            assertEquals(numItems, count.get());
+        }
+
+        @Test
+        void pollAllArrayAfterCompleteReturnsZero(Channel<Integer> channel) {
+            channel.complete();
+
+            var items = new Integer[1];
+            assertEquals(0, channel.pollAll(items));
+            assertNull(items[0]);
+        }
+
+        @Test
+        void pollAllCollectionEmpty(Channel<Integer> channel) {
+            var items = new ArrayList<Integer>();
+            var count = channel.pollAll(items);
+
+            assertEquals(0, count);
+            assertEquals(0, items.size());
+        }
+
+        @Test
+        void pollAllCollectionManyItems(Channel<Integer> channel) throws Exception {
+            int numItems = 100;
+            CompletableFuture[] cfs = new CompletableFuture[numItems];
+            for (int i = 0; i < cfs.length; i++) {
+                cfs[i] = channel.write(i).toCompletableFuture();
+            }
+
+            var items = new ArrayList<Integer>();
+            var count = channel.pollAll(items);
+
+            CompletableFuture.allOf(cfs).get();
+
+            for (int i = 0; i < numItems; i++) {
+                assertEquals(i, items.get(i));
+            }
+            assertEquals(numItems, count);
+        }
+
+        @Test
+        void manyPollAllCollectionManyItems(Channel<Integer> channel) throws Exception {
+            int numItems = 10_000;
+            CompletableFuture[] writes = new CompletableFuture[numItems];
+            for (int i = 0; i < writes.length; i++) {
+                writes[i] = channel.write(i).toCompletableFuture();
+            }
+
+            var arr1 = new ArrayList<Integer>();
+            var arr2 = new ArrayList<Integer>();
+            var arr3 = new ArrayList<Integer>();
+            var count = new AtomicInteger();
+            CompletableFuture.allOf(
+                    CompletableFuture.runAsync(() -> count.addAndGet(channel.pollAll(arr1))),
+                    CompletableFuture.runAsync(() -> count.addAndGet(channel.pollAll(arr2))),
+                    CompletableFuture.runAsync(() -> count.addAndGet(channel.pollAll(arr3)))
+            ).get();
+
+            CompletableFuture.allOf(writes).get();
+
+            assertTrue(isSorted(arr1));
+            assertTrue(isSorted(arr2));
+            assertTrue(isSorted(arr3));
+
+            arr1.addAll(arr2);
+            arr1.addAll(arr3);
+
+            arr1.sort(Comparator.naturalOrder());
+
+            assertEquals(numItems, arr1.size());
+            for (int i = 0; i < numItems; i++) {
+                assertEquals(i, arr1.get(i));
+            }
+
+            assertEquals(numItems, count.get());
+        }
+
+        @Test
+        void pollAllCollectionAfterCompleteReturnsZero(Channel<Integer> channel) {
+            channel.complete();;
+
+            var items = new ArrayList<Integer>();
+            assertEquals(0, channel.pollAll(items));
+            assertEquals(0, items.size());
+        }
+
+        @Test
+        void pollAllEmpty(Channel<Integer> channel) {
+            var items = channel.pollAll();
+
+            assertNotNull(items);
+            assertEquals(0, items.size());
+        }
+
+        @Test
+        void pollAllManyItems(Channel<Integer> channel) throws Exception {
+            int numItems = 100;
+            CompletableFuture[] cfs = new CompletableFuture[numItems];
+            for (int i = 0; i < cfs.length; i++) {
+                cfs[i] = channel.write(i).toCompletableFuture();
+            }
+
+            var items = channel.pollAll();
+
+            CompletableFuture.allOf(cfs).get();
+
+            assertEquals(numItems, items.size());
+            for (int i = 0; i < numItems; i++) {
+                assertEquals(i, items.get(i));
+            }
+        }
+
+        @Test
+        void manyPollAllManyItems(Channel<Integer> channel) throws Exception {
+            int numItems = 10_000;
+            CompletableFuture[] writes = new CompletableFuture[numItems];
+            for (int i = 0; i < writes.length; i++) {
+                writes[i] = channel.write(i).toCompletableFuture();
+            }
+
+            Executor executor = Executors.newFixedThreadPool(4);
+            CompletionService<List<Integer>> completionService = new ExecutorCompletionService<>(executor);
+
+            completionService.submit(() -> channel.pollAll());
+            completionService.submit(() -> channel.pollAll());
+            completionService.submit(() -> channel.pollAll());
+
+            var arr1 = completionService.take().get();
+            var arr2 = completionService.take().get();
+            var arr3 = completionService.take().get();
+
+            CompletableFuture.allOf(writes).get();
+
+            assertTrue(isSorted(arr1));
+            assertTrue(isSorted(arr2));
+            assertTrue(isSorted(arr3));
+
+            arr1.addAll(arr2);
+            arr1.addAll(arr3);
+
+            arr1.sort(Comparator.naturalOrder());
+
+            assertEquals(numItems, arr1.size());
+            for (int i = 0; i < numItems; i++) {
+                assertEquals(i, arr1.get(i));
+            }
+        }
+
+        @Test
+        void pollAllAfterCompleteReturnsZero(Channel<Integer> channel) {
+            channel.complete();
+
+            assertEquals(0, channel.pollAll().size());
+        }
+
+        @Test
+        void readAllConsumerEmpty(Channel<Integer> channel) {
+            var sum = new AtomicInteger();
+            var completion = channel.readAll(sum::addAndGet).toCompletableFuture();
+
+            channel.complete();
+            runOk(completion);
+
+            assertTrue(completion.isDone());
+            assertEquals(0, sum.get());
+        }
+
+        @Test
+        void readAllConsumerEmptyExceptionalCompletion(Channel<Integer> channel) {
+            var sum = new AtomicInteger();
+            var completion = channel.readAll(sum::addAndGet).toCompletableFuture();
+
+            var ex = new RuntimeException();
+
+            channel.complete(ex);
+            assertThrowsCause(ex, completion::get);
+
+            assertTrue(completion.isDone());
+            assertEquals(0, sum.get());
+        }
+
+        @Test
+        void readAllConsumerManyItems(Channel<Integer> channel) throws Exception {
+            int numItems = 1000;
+            int half = numItems / 2;
+
+            var writes = new CompletableFuture[numItems];
+            for (int i = 0; i < half; i++) {
+                writes[i] = channel.write(i).toCompletableFuture();
+            }
+
+            var items = new ArrayList<Integer>();
+            var completion = channel.readAll(items::add).toCompletableFuture();
+
+            for (int i = half; i < numItems; i++) {
+                writes[i] = channel.write(i).toCompletableFuture();
+            }
+
+            CompletableFuture.allOf(writes).get();
+
+            channel.complete();
+            assertNull(completion.get());
+
+            assertEquals(numItems, items.size());
+            for (int i = 0; i < numItems; i++) {
+                assertEquals(i, items.get(i));
+            }
+        }
+
+        @Test
+        void readAllConsumerManyItemsExceptionalCompletion(Channel<Integer> channel) throws Exception {
+            int numItems = 1000;
+            int half = numItems / 2;
+
+            var writes = new CompletableFuture[numItems];
+            for (int i = 0; i < half; i++) {
+                writes[i] = channel.write(i).toCompletableFuture();
+            }
+
+            var items = new ArrayList<Integer>();
+            var completion = channel.readAll(items::add).toCompletableFuture();
+
+            for (int i = half; i < numItems; i++) {
+                writes[i] = channel.write(i).toCompletableFuture();
+            }
+
+            CompletableFuture.allOf(writes).get();
+
+            var ex = new RuntimeException();
+
+            channel.complete(ex);
+            assertThrowsCause(ex, completion::get);
+
+            assertEquals(numItems, items.size());
+            for (int i = 0; i < numItems; i++) {
+                assertEquals(i, items.get(i));
+            }
+        }
+
+        @Test
+        void readAllArrayEmpty(Channel<Integer> channel) {
+            var res = new Integer[1];
+            var completion = channel.readAll(res).toCompletableFuture();
+
+            channel.complete();
+            assertEquals(0, runOk(completion));
+
+            assertNull(res[0]);
+        }
+
+        @Test
+        void readAllArrayEmptyExceptionalCompletion(Channel<Integer> channel) {
+            var res = new Integer[1];
+            var completion = channel.readAll(res).toCompletableFuture();
+
+            var ex = new RuntimeException();
+
+            channel.complete(ex);
+            assertThrowsCause(ex, completion::get);
+
+            assertNull(res[0]);
+        }
+
+        @ParameterizedTest
+        @CsvSource({
+                "1000, 1001",
+                "1000, 1000",
+                "1000, 999",
+        })
+        void readAllArrayConsumerManyItems(int numItems, int capacity, Channel<Integer> channel) throws Exception {
+            int half = numItems / 2;
+
+            var writes = new CompletableFuture[numItems];
+            for (int i = 0; i < half; i++) {
+                writes[i] = channel.write(i).toCompletableFuture();
+            }
+
+            var items = new Integer[capacity];
+            var completion = channel.readAll(items).toCompletableFuture();
+
+            for (int i = half; i < numItems; i++) {
+                writes[i] = channel.write(i).toCompletableFuture();
+            }
+
+            CompletableFuture.allOf(writes).get();
+
+            channel.complete();
+            int written = Math.min(numItems, capacity);
+            assertEquals(written, completion.get());
+
+            int i;
+            for (i = 0; i < written; i++) {
+                assertEquals(i, items[i]);
+            }
+            for (; i < capacity; i++) {
+                assertNull(items[i]);
+            }
+        }
+
+        @ParameterizedTest
+        @CsvSource({
+                "1000, 1001",
+                "1000, 1000",
+                "1000, 999",
+        })
+        void readAllArrayConsumerManyItemsExceptionalCompletion(int numItems, int capacity, Channel<Integer> channel) throws Exception {
+            int half = numItems / 2;
+
+            var writes = new CompletableFuture[numItems];
+            for (int i = 0; i < half; i++) {
+                writes[i] = channel.write(i).toCompletableFuture();
+            }
+
+            var items = new Integer[capacity];
+            var completion = channel.readAll(items).toCompletableFuture();
+
+            for (int i = half; i < numItems; i++) {
+                writes[i] = channel.write(i).toCompletableFuture();
+            }
+
+            CompletableFuture.allOf(writes).get();
+
+            var ex = new RuntimeException();
+
+            channel.complete(ex);
+            int written = Math.min(numItems, capacity);
+            if (capacity > numItems) {
+                assertThrowsCause(ex, completion::get);
+            } else {
+                assertEquals(written, completion.get());
+            }
+
+            int i;
+            for (i = 0; i < written; i++) {
+                assertEquals(i, items[i]);
+            }
+            for (; i < capacity; i++) {
+                assertNull(items[i]);
+            }
+        }
+
+        @Test
+        void readAllCollectionEmpty(Channel<Integer> channel) {
+            var items = new ArrayList<Integer>();
+            var completion = channel.readAll(items).toCompletableFuture();
+
+            channel.complete();
+            runOk(completion);
+
+            assertTrue(completion.isDone());
+            assertEquals(0, items.size());
+        }
+
+        @Test
+        void readAllCollectionEmptyExceptionalCompletion(Channel<Integer> channel) {
+            var items = new ArrayList<Integer>();
+            var completion = channel.readAll(items).toCompletableFuture();
+
+            var ex = new RuntimeException();
+
+            channel.complete(ex);
+            assertThrowsCause(ex, completion::get);
+
+            assertTrue(completion.isDone());
+            assertEquals(0, items.size());
+        }
+
+        @Test
+        void readAllCollectionManyItems(Channel<Integer> channel) throws Exception {
+            int numItems = 1000;
+            int half = numItems / 2;
+
+            var writes = new CompletableFuture[numItems];
+            for (int i = 0; i < half; i++) {
+                writes[i] = channel.write(i).toCompletableFuture();
+            }
+
+            var items = new ArrayList<Integer>();
+            var completion = channel.readAll(items).toCompletableFuture();
+
+            for (int i = half; i < numItems; i++) {
+                writes[i] = channel.write(i).toCompletableFuture();
+            }
+
+            CompletableFuture.allOf(writes).get();
+
+            channel.complete();
+            assertNull(completion.get());
+
+            assertEquals(numItems, items.size());
+            for (int i = 0; i < numItems; i++) {
+                assertEquals(i, items.get(i));
+            }
+        }
+
+        @Test
+        void readAllCollectionManyItemsExceptionalCompletion(Channel<Integer> channel) throws Exception {
+            int numItems = 1000;
+            int half = numItems / 2;
+
+            var writes = new CompletableFuture[numItems];
+            for (int i = 0; i < half; i++) {
+                writes[i] = channel.write(i).toCompletableFuture();
+            }
+
+            var items = new ArrayList<Integer>();
+            var completion = channel.readAll(items).toCompletableFuture();
+
+            for (int i = half; i < numItems; i++) {
+                writes[i] = channel.write(i).toCompletableFuture();
+            }
+
+            CompletableFuture.allOf(writes).get();
+
+            var ex = new RuntimeException();
+
+            channel.complete(ex);
+            assertThrowsCause(ex, completion::get);
+
+            assertEquals(numItems, items.size());
+            for (int i = 0; i < numItems; i++) {
+                assertEquals(i, items.get(i));
+            }
+        }
+    }
+
+    private static <T> void assertCompletableFutureDoesNotLeak(CompletionStage<T> cs) {
         if (!(cs instanceof CompletableFuture)) {
             return;
         }
@@ -415,5 +990,43 @@ abstract class ChannelTestBase {
         assertThrows(UnsupportedOperationException.class, () -> cf.completeAsync(() -> null));
         assertThrows(UnsupportedOperationException.class, () -> cf.orTimeout(1, TimeUnit.MILLISECONDS));
         assertThrows(UnsupportedOperationException.class, () -> cf.completeOnTimeout(null, 1, TimeUnit.MILLISECONDS));
+    }
+
+    private static boolean isSorted(Integer[] arr) {
+        Integer last = Integer.MIN_VALUE;
+        for (int i = 0; i < arr.length; i++) {
+            if (arr[i] == null) {
+                return true;
+            }
+            if (arr[i] <= last) {
+                if (arr[i] < last) {
+                    return false;
+                }
+                if (last != Integer.MIN_VALUE) {
+                    return false;
+                }
+            }
+            last = arr[i];
+        }
+        return true;
+    }
+
+    private static boolean isSorted(Collection<Integer> arr) {
+        Integer last = Integer.MIN_VALUE;
+        for (Integer integer : arr) {
+            if (integer == null) {
+                return true;
+            }
+            if (integer <= last) {
+                if (integer < last) {
+                    return false;
+                }
+                if (last != Integer.MIN_VALUE) {
+                    return false;
+                }
+            }
+            last = integer;
+        }
+        return true;
     }
 }
