@@ -377,7 +377,18 @@ abstract class ChannelTestBase {
         assertCompletableFutureDoesNotLeak(cs);
     }
 
-    <T> void assertCompletableFutureDoesNotLeak(CompletionStage<T> cs) {
+    @Test
+    void writeFuture() {
+        var channel = createFullIntChannel();
+        if (channel == null) {
+            return;
+        }
+
+        var cs = channel.write(1);
+        assertCompletableFutureDoesNotLeak(cs);
+    }
+
+    static <T> void assertCompletableFutureDoesNotLeak(CompletionStage<T> cs) {
         if (!(cs instanceof CompletableFuture)) {
             return;
         }
@@ -386,7 +397,7 @@ abstract class ChannelTestBase {
         assertNotEquals(cs, cs.toCompletableFuture());
     }
 
-    private <T> void completableFutureThrowsOnNonCompletionStageMethodCalls(CompletableFuture<T> cf) {
+    private static <T> void completableFutureThrowsOnNonCompletionStageMethodCalls(CompletableFuture<T> cf) {
         assertThrows(UnsupportedOperationException.class, cf::get);
         assertThrows(UnsupportedOperationException.class, () -> cf.get(1, TimeUnit.MILLISECONDS));
         assertThrows(UnsupportedOperationException.class, () -> cf.getNow(null));
@@ -405,5 +416,4 @@ abstract class ChannelTestBase {
         assertThrows(UnsupportedOperationException.class, () -> cf.orTimeout(1, TimeUnit.MILLISECONDS));
         assertThrows(UnsupportedOperationException.class, () -> cf.completeOnTimeout(null, 1, TimeUnit.MILLISECONDS));
     }
-
 }

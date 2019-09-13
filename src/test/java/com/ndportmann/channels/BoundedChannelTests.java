@@ -289,10 +289,10 @@ abstract class BoundedChannelTests extends ChannelTestBase {
     }
 
     @Override
-    protected <T> Channel<T> createFullChannel(Supplier<T> clazz) {
+    protected <T> Channel<T> createFullChannel(Supplier<T> supplier) {
         var channel = this.<T>createChannel();
         try {
-            channel.writer().offer(clazz.get());
+            channel.writer().offer(supplier.get());
         } catch (Exception e) {
             fail(e);
         }
