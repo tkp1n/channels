@@ -1,4 +1,4 @@
-name: Build & run unit tests
+name: channels-unit-test
 
 on: [push]
 
