@@ -1,0 +1,16 @@
+name: channels-deploy
+
+on:
+  push:
+    branches:
+      - feature/deploy
+    tags:
+      - v*
+
+jobs:
+  deploy:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - run: echo 'Hello world'
