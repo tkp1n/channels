@@ -1,5 +1,5 @@
-[![Build Status](https://dev.azure.com/ndportmann/channels/_apis/build/status/tkp1n.channels?branchName=master)](https://dev.azure.com/ndportmann/channels/_build/latest?definitionId=2&branchName=master)
-![Azure DevOps coverage](https://img.shields.io/azure-devops/coverage/ndportmann/channels/2)
+[![GitHub Actions](https://github.com/tkp1n/channels/workflows/channels-unit-test/badge.svg)](https://github.com/tkp1n/channels)
+[![codecov](https://codecov.io/gh/tkp1n/channels/branch/master/graph/badge.svg)](https://codecov.io/gh/tkp1n/channels)
 ![GitHub](https://img.shields.io/github/license/tkp1n/channels)
 
 # Channels
